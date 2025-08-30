@@ -19,12 +19,15 @@ package com.xemantic.ai.tool.schema.generator
 import com.xemantic.ai.tool.schema.*
 import com.xemantic.ai.tool.schema.meta.*
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PolymorphicKind
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.SerialKind
 import kotlinx.serialization.descriptors.StructureKind
+import kotlinx.serialization.descriptors.capturedKClass
+import kotlinx.serialization.descriptors.elementDescriptors
 import kotlinx.serialization.serializer
 
 /**
@@ -101,12 +104,16 @@ private class JsonSchemaGenerator(
 
     private val defs: MutableMap<String, ObjectSchema> = mutableMapOf()
 
+    @OptIn(InternalSerializationApi::class, ExperimentalSerializationApi::class)
     fun generatePropertySchema(
         descriptor: SerialDescriptor,
         title: String? = null,
         description: String? = null,
         propertyMeta: List<Annotation> = emptyList()
     ): JsonSchema {
+        if (descriptor.isInline) {
+            return generateSchema(descriptor.getElementDescriptor(0))
+        }
         val typeMeta = descriptor.annotations
         val combinedMeta = propertyMeta + typeMeta
         val base: JsonSchema.Builder.() -> Unit = {
@@ -128,6 +135,7 @@ private class JsonSchemaGenerator(
             StructureKind.MAP -> mapSchema(base)
             StructureKind.CLASS, @OptIn(ExperimentalSerializationApi::class) PolymorphicKind.SEALED ->
                 objectSchemaOrRef(title, description, typeMeta, propertyMeta, descriptor)
+            SerialKind.CONTEXTUAL -> generateSchema(descriptor.capturedKClass!!.serializer().descriptor)
             else -> mapSchema(base) // Default case
         }
     }
